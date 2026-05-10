@@ -1,0 +1,56 @@
+name: Download Webpage as HTML
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to download'
+        required: true
+        type: string
+        default: 'https://example.com'
+      filename:
+        description: 'Output filename (without .html extension)'
+        required: false
+        type: string
+        default: 'downloaded-page'
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Download webpage
+      run: |
+        URL="${{ github.event.inputs.url }}"
+        FILENAME="${{ github.event.inputs.filename }}"
+        
+        # Use curl to download the webpage
+        curl -L \
+          --max-time 30 \
+          --retry 3 \
+          --retry-delay 2 \
+          --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+          --output "${FILENAME}.html" \
+          "$URL"
+        
+        # Check if download was successful
+        if [ $? -eq 0 ]; then
+          echo "✅ Successfully downloaded: $URL"
+          echo "📁 Saved as: ${FILENAME}.html"
+          
+          # Display file info
+          echo "File size: $(du -h ${FILENAME}.html | cut -f1)"
+        else
+          echo "❌ Failed to download: $URL"
+          exit 1
+        fi
+    
+    - name: Upload HTML file as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: downloaded-html
+        path: ${{ github.event.inputs.filename }}.html
+        if-no-files-found: error
