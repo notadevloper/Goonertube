@@ -1,31 +1,107 @@
 name: Download YouTube Video (Best Quality + Merged Audio)
 
-on: workflow_dispatch
+on: 
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'YouTube Video URL'
+        required: true
+        type: string
+        default: 'https://www.youtube.com/watch?v='
+      format:
+        description: 'Output format'
+        required: false
+        type: choice
+        default: 'mp4'
+        options:
+          - mp4
+          - mkv
+      verbose:
+        description: 'Enable verbose logging'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   download:
     runs-on: ubuntu-latest
     
     steps:
-      # Step 1: Install yt-dlp with FFmpeg (required for merging)
       - name: Setup yt-dlp with FFmpeg
         uses: AnimMouse/setup-yt-dlp@v3
         with:
-          ffmpeg: true      # Enables video+audio merging
-          aria2: true       # Optional: speeds up downloads
+          ffmpeg: true
+          aria2: true
       
-      # Step 2: Download best video + best audio and merge them
-      - name: Download and merge best quality
+      - name: Log start time and URL
         run: |
-          yt-dlp \
-            -f "bestvideo+bestaudio" \
-            --merge-output-format mp4 \
-            --output "%(title)s.%(ext)s" \
-            "https://www.youtube.com/watch?v=C0DPdy98e4c"
+          echo "=== DOWNLOAD STARTED ==="
+          echo "Time: $(date -u)"
+          echo "URL: ${{ github.event.inputs.url }}"
+          echo "Format: ${{ github.event.inputs.format }}"
+          echo "Verbose: ${{ github.event.inputs.verbose }}"
+          echo "========================="
       
-      # Step 3: Upload the merged file
-      - name: Upload merged video
+      - name: Download with error handling
+        id: download
+        run: |
+          # Create timestamp for logs
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          
+          # Build command with optional verbose flag
+          CMD="yt-dlp -f \"bestvideo+bestaudio\" --merge-output-format ${{ github.event.inputs.format }} --output \"%(title)s.%(ext)s\""
+          
+          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
+            CMD="$CMD --verbose"
+          fi
+          
+          CMD="$CMD \"${{ github.event.inputs.url }}\""
+          
+          echo "Running: $CMD"
+          echo ""
+          echo "=== YT-DLP OUTPUT ==="
+          eval $CMD 2>&1 | tee "download_${TIMESTAMP}.log"
+          
+          # Capture exit code
+          EXIT_CODE=${PIPESTATUS[0]}
+          
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ Success" >> $GITHUB_STEP_SUMMARY
+            echo "download_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed with exit code: $EXIT_CODE" >> $GITHUB_STEP_SUMMARY
+            echo "download_status=failed" >> $GITHUB_OUTPUT
+            exit $EXIT_CODE
+          fi
+      
+      - name: Upload results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: best-quality-video
-          path: ./*.mp4
+          name: youtube-download-${{ github.run_id }}
+          path: |
+            *.mp4
+            *.mkv
+            *.log
+          retention-days: 7
+      
+      - name: Display error summary on failure
+        if: failure()
+        run: |
+          echo "=== ERROR SUMMARY ==="
+          echo "Common issues and solutions:"
+          echo ""
+          echo "1. 'Sign in to confirm you're not a bot'"
+          echo "   → Need to add cookies (YouTube blocking GitHub IPs)"
+          echo ""
+          echo "2. 'HTTP Error 403: Forbidden'"
+          echo "   → Video may be age-restricted or private"
+          echo ""
+          echo "3. 'ffmpeg not found'"
+          echo "   → FFmpeg installation failed, check workflow setup"
+          echo ""
+          echo "4. 'No video formats found'"
+          echo "   → URL may be invalid or video deleted"
+          echo ""
+          echo "Check the 'error-logs' artifact for full debug output"
+          echo "====================="
