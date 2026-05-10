@@ -1,0 +1,31 @@
+name: Download YouTube Video (Best Quality + Merged Audio)
+
+on: workflow_dispatch
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Install yt-dlp with FFmpeg (required for merging)
+      - name: Setup yt-dlp with FFmpeg
+        uses: AnimMouse/setup-yt-dlp@v3
+        with:
+          ffmpeg: true      # Enables video+audio merging
+          aria2: true       # Optional: speeds up downloads
+      
+      # Step 2: Download best video + best audio and merge them
+      - name: Download and merge best quality
+        run: |
+          yt-dlp \
+            -f "bestvideo+bestaudio" \
+            --merge-output-format mp4 \
+            --output "%(title)s.%(ext)s" \
+            "https://www.youtube.com/watch?v=C0DPdy98e4c"
+      
+      # Step 3: Upload the merged file
+      - name: Upload merged video
+        uses: actions/upload-artifact@v4
+        with:
+          name: best-quality-video
+          path: ./*.mp4
